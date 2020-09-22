@@ -1,0 +1,194 @@
+sys161: System/161 release 2.0.3, compiled Aug 10 2015 13:31:07
+
+OS/161 base system version 1.99.08
+Copyright (c) 2000, 2001-2005, 2008-2011, 2013, 2014
+   President and Fellows of Harvard College.  All rights reserved.
+
+Put-your-group-name-here's system version 0 (DUMBVM #1)
+
+292k physical memory available
+Device probe...
+lamebus0 (system main bus)
+emu0 at lamebus0
+ltrace0 at lamebus0
+ltimer0 at lamebus0
+beep0 at ltimer0
+rtclock0 at ltimer0
+lrandom0 at lamebus0
+random0 at lrandom0
+lhd0 at lamebus0
+lhd1 at lamebus0
+lser0 at lamebus0
+con0 at lser0
+
+cpu0: MIPS/161 (System/161 2.x) features 0x0
+OS/161 kernel [? for menu]: ?
+
+OS/161 kernel menu
+    [?o] Operations menu                [khgen] Next kernel heap generation 
+    [?t] Tests menu                     [khdump] Dump kernel heap           
+    [kh] Kernel heap stats              [q] Quit and shut down              
+
+Operation took 0.503954360 seconds
+OS/161 kernel [? for menu]: q
+Shutting down.
+The system is halted.
+sys161: 3316358048 cycles (52525928 run, 3263832120 global-idle)
+sys161:   cpu0: 8755051 kern, 0 user, 0 idle; 12387 ll, 12387/0 sc, 45906 sync
+sys161: 1928 irqs 0 exns 0r/0w disk 4r/919w console 0r/0w/1m emufs 0r/0w net
+sys161: Elapsed real time: 130.954254 seconds (25.3246 mhz)
+sys161: Elapsed virtual time: 132.658614096 seconds (25 mhz)
+
+git log outputs:
+commit afe7e77a52fbb6f86c210f5f8965d994134705c1
+Author: Yizhou Shen <shyzh99@ssh-linux2.ece.ubc.ca>
+Date:   Tue Sep 15 22:24:58 2020 -0700
+
+    Initial commit of os161 for CPEN331
+
+git tag outputs:
+asst1-start
+
+Code Reading Exercises
+1. 
+mips_trap(struct trapframe *tf) at line 126 in ..kern/arch/mips/locore/trap.c
+If an interrupt occurs, the control transfer to the interrupt handler where it checks if (code == EX_IRQ) at line 153
+The difference is interrupt is a type of trap. According to the comments, if the currently recorded interrupt state is interrupts on (spl of 0), adjust the recorded state to match, and restore after processing the interrupt.
+
+2. _syscall at line 83 in userland/lib/libc/arch/mips/syscalls-mips.S
+
+3. Because the configuration script only configures the OS/161 distribution and build system, not the operating system kernel.
+
+4. 
+
+5. It is important to separate the machine dependent codes because it prevents the codes from using invalid address
+
+6. 
+1184 bits. According to struct trapframe at line 40 in arch/mips/include/trapframe.h, each uint32_t in the trapframe struct is 32 bits large.
+In total, the trapframe should be 37*32=1184 bits large.
+
+7. According to the comments in config script, the config script should be re-run if the kernel config file has been changed, or it is not a valid configuration for the supported architecture.
+
+8. After the header file inclusions have been changed, or after re-running config
+
+9. After re-running the kern/conf/config script and running bmake depend 
+
+10. We can add a function in kern/startup/menu.c that have something like kprintf("Hello world!\n");
+
+11. Because os161 does not have access to the standard utilities on the current machine.
+
+12. The values are stored in the registers.
+
+13. 
+(Not sure about how to add a new system call)
+But after adding, should re-run config script(Q7), run bmake depend(Q8), bmake and then bmake install(Q9).
+
+14. __start () at ../../arch/sys161/main/start.S:54
+
+15. addiu sp, sp, -24
+
+16. 
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   0x80014a0c in menu at ../../main/menu.c:697
+2       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:211
+
+17. The assembly codes in start.S are executed to setup the hardware, such as setting up memory and initializing registers.
+
+18. jal kmain at line 215 of start.S
+
+19. 
+Breakpoint 1, boot () at ../../main/main.c:99
+99		kprintf("\n");
+(gdb) n
+100		kprintf("OS/161 base system version %s\n", BASE_VERSION);
+(gdb) n
+101		kprintf("%s", harvard_copyright);
+(gdb) n
+102		kprintf("\n");
+(gdb) n
+104		kprintf("Put-your-group-name-here's system version %s (%s #%d)\n",
+(gdb) n
+106		kprintf("\n");
+(gdb) n
+109		ram_bootstrap();
+(gdb) n
+110		proc_bootstrap();
+(gdb) n
+111		thread_bootstrap();
+(gdb) n
+112		hardclock_bootstrap();
+(gdb) n
+113		vfs_bootstrap();
+(gdb) n
+114		kheap_nextgeneration();
+(gdb) n
+117		kprintf("Device probe...\n");
+(gdb) n
+118		KASSERT(curthread->t_curspl > 0);
+(gdb) n
+119		mainbus_bootstrap();
+(gdb) n
+120		KASSERT(curthread->t_curspl == 0);
+(gdb) n
+122		pseudoconfig();
+(gdb) n
+123		kprintf("\n");
+(gdb) n
+124		kheap_nextgeneration();
+(gdb) n
+127		vm_bootstrap();
+(gdb) n
+128		kprintf_bootstrap();
+(gdb) n
+129		thread_start_cpus();
+(gdb) n
+132		vfs_setbootfs("emu0");
+(gdb) n
+134		kheap_nextgeneration();
+(gdb) n
+141	}
+
+20. 
+Breakpoint 1, thread_bootstrap () at ../../thread/thread.c:357
+357		cpuarray_init(&allcpus);
+(gdb) p *bootcpu
+Cannot access memory at address 0x80000
+
+21. 
+(gdb) n
+367		bootcpu = cpu_create(0);
+(gdb) n
+368		bootthread = bootcpu->c_curthread;
+(gdb) p *bootcpu
+$2 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {
+    tl_head = {tln_prev = 0x0, tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10, 
+      tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_hardclocks = 0, c_spinlocks = 0, 
+  c_isidle = false, c_runqueue = {tl_head = {tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, 
+    tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {
+    splk_lock = 0, splk_holder = 0x0}, c_ipi_pending = 0, c_shootdown = {{
+      ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0, 
+    splk_holder = 0x0}}
+
+22. 
+Breakpoint 1, boot () at ../../main/main.c:99
+99		kprintf("\n");
+(gdb) cpuarray allcpus
+0 cpus
+
+23.
+(gdb) n
+141	}
+(gdb) n
+kmain (arguments=0x80035c20 "") at ../../main/main.c:213
+213		menu(arguments);
+(gdb) cpuarray allcpus
+1 cpus
+cpu 0:
+$1 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {
+    tl_head = {tln_prev = 0x0, tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10, 
+      tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_hardclocks = 1, c_spinlocks = 0, 
+  c_isidle = false, c_runqueue = {tl_head = {tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, 
+    tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {
+    splk_lock = 0, splk_holder = 0x0}, c_ipi_pending = 0, c_shootdown = {{
+      ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0, 
+    splk_holder = 0x0}}
