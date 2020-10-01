@@ -1,0 +1,41 @@
+Code Reading Exercises
+1. 
+When a thread exits, it detaches from the processor, removes its virtual memory and goes into a zombie state.
+When a thread sleeps, it yields to another thread, goes into sleep state until wchan_wakeone() or wchan_wakeall() is called.
+
+2. 
+thread_switch() at line 560 in kern/thread/thread.c 
+
+3. 
+There are 4 possible thread states.
+S_RUN: the thread is running
+S_READY: the thread is runnable and ready to run
+S_SLEEP: the thread is sleeping and waking for a wakeup
+S_ZOMBIE: the thread is terminated, but has not been cleaned up
+
+4. 
+If an interrupt occurs, the interrupt handler will not be called when the interrupts are turned off.
+It is accomplished by calling splhigh() at line 569 in kern/thread/thread.c
+It is important to turn off interrupts because it ensures that the thread executions are completed successfully and not switching to another thread in the middle of an execution.
+
+5. 
+thread_make_runnable() is called and add the sleeping thread to the run queue.
+The sleeping thread gets to run again when it's queued on the wait channel, and thread_switch() is called.
+
+6. 
+thread_make_runnable()
+
+7.
+threadlist_addtail() choose the next thread to be queued to the wait channel. 
+thread_make_runnable() returns the first thread in the wait channel so the running order is the same as in the wait channel.
+
+8. 
+When the hardware timer interrupts, the interrupt handler calls hardclock().
+schedule() is called on a timer interrupt.
+
+9. 
+wchan_sleep() is used in semaphore function P() when the count reaches 0, it block the thread until the count is 1.
+wchan_wakeone() is used in semaphore function V() and it wake up the thread and increment the count.
+
+10. 
+The implementation of wchan use a spinlock to block all interrupts before the thread is put in the wait channel.
