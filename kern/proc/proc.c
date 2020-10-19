@@ -72,6 +72,12 @@ proc_create(const char *name)
 		kfree(proc);
 		return NULL;
 	}
+    proc->p_filetable = ft_create();
+    if (proc->p_filetable == NULL) {
+        kfree(proc->p_name);
+        kfree(proc);
+        return NULL;
+    }
 
 	threadarray_init(&proc->p_threads);
 	spinlock_init(&proc->p_lock);
@@ -165,6 +171,8 @@ proc_destroy(struct proc *proc)
 		as_destroy(as);
 	}
 
+    ft_destroy(proc->p_filetable);
+
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
@@ -199,6 +207,12 @@ proc_create_runprogram(const char *name)
 	if (newproc == NULL) {
 		return NULL;
 	}
+
+    int err = ft_init_std(newproc->p_filetable);
+    if (err) {
+        kfree(newproc);
+        return NULL;
+    }
 
 	/* VM fields */
 

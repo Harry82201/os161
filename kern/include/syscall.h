@@ -59,4 +59,10 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
+// file syscalls
+int sys_close(int fd);
+int sys_chdir(userptr_t pathname);
+int sys_dup2(int oldfd, int newfd);
+int sys___getcwd(userptr_t buf, size_t buflen);
+
 #endif /* _SYSCALL_H_ */
