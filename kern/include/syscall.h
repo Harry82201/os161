@@ -61,8 +61,8 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 // file syscalls
 int sys_close(int fd);
-int sys_chdir(userptr_t pathname);
-int sys_dup2(int oldfd, int newfd);
-int sys___getcwd(userptr_t buf, size_t buflen);
+int sys_chdir(const char *pathname);
+int sys_dup2(int oldfd, int newfd, int *retval);
+int sys___getcwd(char *buf, size_t buflen, int *retval);
 
 #endif /* _SYSCALL_H_ */

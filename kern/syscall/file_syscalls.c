@@ -11,22 +11,24 @@ int sys_close(int fd)
     return 0;
 }
 
-int sys_dup2(int oldfd, int newfd)
+int sys_dup2(int oldfd, int newfd, int *retval)
 {
     (void) oldfd;
     (void) newfd;
+    (void) retval;
     return 0;
 }
 
-int sys_chdir(userptr_t pathname)
+int sys_chdir(const char* pathname)
 {
     (void) pathname;
     return 0;
 }
 
-int sys___getcwd(userptr_t buf, size_t buflen)
+int sys___getcwd(char* buf, size_t buflen, int *retval)
 {
     (void) buf;
     (void) buflen;
+    (void) retval;
     return 0;
 }
