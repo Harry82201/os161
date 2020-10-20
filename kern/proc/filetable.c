@@ -70,8 +70,8 @@ void entry_destroy(struct file_entry *entry)
 void entry_incref(struct file_entry *file_entry)
 {
     KASSERT(file_entry != NULL);
-
     file_entry->ref_count++;
+
 }
 
 void entry_decref(struct file_entry *file_entry)
@@ -81,10 +81,10 @@ void entry_decref(struct file_entry *file_entry)
 
     file_entry->ref_count--;
     if (file_entry->ref_count == 0) {
+        lock_release(file_entry->entry_lock);
         entry_destroy(file_entry);
         return;
     }
-    lock_release(file_entry->entry_lock);
 }
 
 int ft_init_std(struct file_table *ft)
