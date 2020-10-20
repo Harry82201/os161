@@ -16,13 +16,15 @@ int sys_close(int fd)
     KASSERT(ft != NULL);
 
     lock_acquire(ft->ft_lock);
+    
     if (fd < 0 || fd > OPEN_MAX || ft->ft_entries[fd] != NULL) {
         lock_release(ft->ft_lock);
         return EBADF;
     }
-
+    // close entry if being used
     struct file_entry *entry = ft->ft_entries[fd];
     lock_acquire(entry->entry_lock);
+    vfs_close(entry->file);
     entry_decref(entry);
     ft->ft_entries[fd] = NULL;
     lock_release(entry->entry_lock);
@@ -48,7 +50,7 @@ int sys_dup2(int oldfd, int newfd, int *retval)
 
     struct file_entry *old_entry = ft->ft_entries[oldfd];
 
-    // free entry if being used
+    // close entry if being used
     struct file_entry *new_entry = ft->ft_entries[newfd];
     if (new_entry != NULL) {
         lock_acquire(new_entry->entry_lock);

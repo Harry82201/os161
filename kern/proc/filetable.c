@@ -4,6 +4,9 @@
 #include <kern/errno.h>
 #include <kern/fcntl.h>
 
+/*
+ * Create a file table struct with no entries
+ */
 struct file_table *ft_create() 
 {
     struct file_table *ft;
@@ -19,13 +22,16 @@ struct file_table *ft_create()
         return NULL;
     }
 
+    // files the file table with NULL entries
     for (int i = 0; i < OPEN_MAX; i++) {
         ft->ft_entries[i] = NULL;
     }
 
     return ft;
 }
-
+/*
+ * Clean up memory created with a file table
+ */
 void ft_destroy(struct file_table *ft) 
 {
     KASSERT(ft != NULL);
@@ -34,6 +40,9 @@ void ft_destroy(struct file_table *ft)
     kfree(ft);
 }
 
+/*
+ * Create a new file entry with a given vnode
+ */
 struct file_entry *entry_create(struct vnode *vnode)
 {
     KASSERT(vnode != NULL);
@@ -58,6 +67,9 @@ struct file_entry *entry_create(struct vnode *vnode)
     return entry;
 }
 
+/*
+ * Clean up memory created with a file entry
+ */
 void entry_destroy(struct file_entry *entry) 
 {
     KASSERT(entry != NULL);
@@ -67,6 +79,9 @@ void entry_destroy(struct file_entry *entry)
     kfree(entry);
 }
 
+/*
+ * increment reference counter for specified file_entry
+ */  
 void entry_incref(struct file_entry *file_entry)
 {
     KASSERT(file_entry != NULL);
@@ -74,6 +89,11 @@ void entry_incref(struct file_entry *file_entry)
 
 }
 
+/*
+ * Decrement reference counter for specified file_entry
+ * if reference counter is zero as a result of decrementing
+ * it will also de-allocate the file_entry
+ */ 
 void entry_decref(struct file_entry *file_entry)
 {
     KASSERT(file_entry != NULL);
@@ -87,6 +107,10 @@ void entry_decref(struct file_entry *file_entry)
     }
 }
 
+/*
+ * Initializes file descriptors for standard input, output and error
+ * These are all attached to the console device
+ */
 int ft_init_std(struct file_table *ft)
 {
     KASSERT(ft != NULL);
@@ -115,6 +139,7 @@ int ft_init_std(struct file_table *ft)
         return err;
     }
 
+    // Create each of the file entries in the file table
     ft->ft_entries[0] = entry_create(std_in);
     if (ft->ft_entries[0] == NULL) {
         return ENOMEM;
@@ -132,6 +157,7 @@ int ft_init_std(struct file_table *ft)
     ft->ft_entries[1]->rwflags = O_WRONLY;
     ft->ft_entries[2]->rwflags = O_WRONLY;
 
+    // Std entries are incremented because they are open by the console
     entry_incref(ft->ft_entries[0]);
     entry_incref(ft->ft_entries[1]);
     entry_incref(ft->ft_entries[2]);
