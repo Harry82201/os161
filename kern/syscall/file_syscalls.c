@@ -35,7 +35,7 @@ int sys_open(const char *filename, int flags, int *retval){
         return EINVAL;
     }
 
-    // check copyinstr
+    // copy string from user space to kernel space
     err_copyinstr = copyinstr((const_userptr_t)filename, new_path, PATH_MAX, &got);
     if(err_copyinstr){
         return err_copyinstr;
@@ -63,6 +63,7 @@ int sys_open(const char *filename, int flags, int *retval){
     }
     
     lock_acquire(curproc->p_filetable->ft_entries[fd]->entry_lock);
+    // set current entry's filepath and flag
     curproc->p_filetable->ft_entries[fd]->file = new_file;
     curproc->p_filetable->ft_entries[fd]->rwflags = flags;
     
@@ -105,14 +106,17 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     lock_acquire(ft->ft_entries[fd]->entry_lock);
     uio.uio_segflg = UIO_USERSPACE;
     uio.uio_space = curproc->p_addrspace;
+    // create uio struct to get the working directory from virtual file system
     uio_kinit(&iovec, &uio, buf, buflen, ft->ft_entries[fd]->offset, UIO_READ);
 
+    // use VOP_READ to read file
     result = VOP_READ(ft->ft_entries[fd]->file, &uio);
     if(result){
         lock_release(ft->ft_entries[fd]->entry_lock);
         return result;
     }
 
+    // retval is the amount of data transfered
     off_t len = (off_t)buflen - uio.uio_resid;
     ft->ft_entries[fd]->offset = ft->ft_entries[fd]->offset + len;
     *retval = len;
@@ -153,16 +157,19 @@ ssize_t sys_write(int fd, void *buf, size_t nbytes, int *retval){
     lock_release(ft->ft_lock);
     
     lock_acquire(ft->ft_entries[fd]->entry_lock);
+    // create uio struct to get the working directory from virtual file system
     uio_kinit(&iovec, &uio, buf, nbytes, ft->ft_entries[fd]->offset, UIO_WRITE);
     uio.uio_segflg = UIO_USERSPACE;
     uio.uio_space = curproc->p_addrspace;
     
+    // use VOP_WRITE to write file
     result = VOP_WRITE(ft->ft_entries[fd]->file, &uio);
     if(result){
         lock_release(ft->ft_entries[fd]->entry_lock);
         return result;
     }
 
+    // retval is the amount of data transfered
     off_t len = (off_t)nbytes - uio.uio_resid;
     ft->ft_entries[fd]->offset = ft->ft_entries[fd]->offset + len;
     *retval = len;
@@ -179,21 +186,26 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
     off_t seek_pos = entry->offset;
     struct stat statbuff;
     
+    // check if ft and fd are valid
     if(ft == NULL || entry == NULL || fd < 0 || fd > OPEN_MAX - 1){
         return EBADF;
     }
 
+    // check if whence is invalid
     if(whence < 0 || whence > 2){
         return EINVAL;
     }
 
+    // check if seek is illegal
     if(!VOP_ISSEEKABLE(entry->file)){
         return ESPIPE;
     }
 
     lock_acquire(entry->entry_lock);
+    // use VOP_STAT to get the file size
     int err = VOP_STAT(entry->file, &statbuff);
 
+    // set new position based on whence
     if(whence == SEEK_SET){
         seek_pos = pos;
     }else if(whence == SEEK_CUR){
@@ -206,6 +218,7 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
         seek_pos = statbuff.st_size + pos;
     }
 
+    // check if seek position is valid
     if(seek_pos < 0){
         lock_release(entry->entry_lock);
         return EINVAL;
