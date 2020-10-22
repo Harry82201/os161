@@ -1,0 +1,70 @@
+1. What are the ELF magic numbers?
+in usr/include/elf.h
+0: 0x7f
+1: 'E'
+2: 'L'
+3: 'F'
+used by e_ident to specify how to interpret the file
+
+2. What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
+UIO_USERISPACE - contains user process code <- is executable
+UIO_USERSPACE - contains user process data
+UIO_SYSSPACE - for Kernel data
+
+3. Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
+The memory reads at a virtual address and a pointer to that address is loaded into the uio struct
+
+4. In runprogram(), why is it important to call vfs_close() before going to usermode?
+We won't be able to close it in the user stack and it needs to be closed so that other users can use it
+
+5. What function forces the processor to switch into usermode? Is this function machine dependent?
+mips_usermode() which is called by enter_new_process() and enter_forked_process()
+asm_usermode() Yes it is machine dependent
+
+6. In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
+copyin and copyout are defined in src/kern/vm/copyinout.c
+memmove are defined in src/common/libc/string/memmove.c
+copyin and copyout copy blocks of memory across user/kernel which involves a lot of error checking and recovery
+
+
+7. What (briefly) is the purpose of userptr_t?
+for noting that an address is in the proper userspace region
+
+8. What is the numerical value of the exception code for a MIPS system call?
+in src/kern/arch/mips/include/trapframe.h
+EX_SYS 8
+
+9. How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
+4 bytes because thats how much the program counter is advanced
+
+10. Why do you "probably want to change" the implementation of kill_curthread()?
+we don't want the kernel to panic when user level code hits a fatal fault
+
+11. What would be required to implement a system call that took more than 4 arguments?
+using the stack to obtain additional arguements 
+
+12. What is the purpose of the SYSCALL macro?
+to load the syscall number into v0 and jump into shared syscall code
+
+13. What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in this directory, not looking somewhere else.)
+in  userland/lib/libc/arch/mips/syscalls-mips.S on line 84
+
+14. After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: 
+OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value. Thus, lseek() 
+takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 
+64-bit offset value. In void syscall(struct trapframe *tf) where will you find each of the three arguments 
+(in which registers) and how will you return the 64-bit offset?
+the first four arguments are in register a0-3 64-bit arguments are in specific adjacent registers
+arg0 is in a0
+arg1 is in a2-a3
+arg2 is on the stack 
+return value is stored in v0 and v1
+
+15. As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. 
+Which kernel function is called to open a file? Which macro is called to read the file? 
+What about to write a file? Which data structure is used in the kernel to represent an open file? 
+files are opened with vfs_open. files are read with VOP_READ. files are written to with VOP_WRITE
+vnodes represent open files
+
+16. What is the purpose of VOP_INCREF and VOP_DECREF?
+count how many vnodes are currently using a file
