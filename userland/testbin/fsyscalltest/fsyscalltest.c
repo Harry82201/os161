@@ -282,6 +282,8 @@ simultaneous_write_test()
 		err(1, "%s: write", file2);
 	}
 
+	printf("get here before lseek\n");
+
 	/* Rewind both files */
 	lseek_ret = lseek(fd1, -(40-seekpos), SEEK_CUR);
 	if (lseek_ret != seekpos) {

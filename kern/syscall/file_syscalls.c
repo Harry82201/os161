@@ -11,6 +11,8 @@
 #include <kern/errno.h>
 #include <uio.h>
 #include <vnode.h>
+#include <stat.h>
+#include <kern/seek.h>
 
 
 int sys_open(const char *filename, int flags, int *retval){
@@ -71,7 +73,7 @@ int sys_open(const char *filename, int flags, int *retval){
 
 }
 
-int sys_read(int fd, void *buf, size_t buflen, int *retval){
+ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     struct uio uio;
     struct iovec iovec;
     int result;
@@ -120,7 +122,7 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval){
 
 }
 
-int sys_write(int fd, void *buf, size_t nbytes, int *retval){
+ssize_t sys_write(int fd, void *buf, size_t nbytes, int *retval){
     struct uio uio;
     struct iovec iovec;
     int result;
@@ -168,6 +170,54 @@ int sys_write(int fd, void *buf, size_t nbytes, int *retval){
     
     return 0;
 
+}
+
+off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high){
+    
+    struct file_table *ft = curproc->p_filetable;
+    struct file_entry *entry = ft->ft_entries[fd];
+    off_t seek_pos = entry->offset;
+    struct stat statbuff;
+    
+    if(ft == NULL || entry == NULL || fd < 0 || fd > OPEN_MAX - 1){
+        return EBADF;
+    }
+
+    if(whence < 0 || whence > 2){
+        return EINVAL;
+    }
+
+    if(!VOP_ISSEEKABLE(entry->file)){
+        return ESPIPE;
+    }
+
+    lock_acquire(entry->entry_lock);
+    int err = VOP_STAT(entry->file, &statbuff);
+
+    if(whence == SEEK_SET){
+        seek_pos = pos;
+    }else if(whence == SEEK_CUR){
+        seek_pos = seek_pos + pos;
+    }else if(whence == SEEK_END){
+        if(err){
+            lock_release(entry->entry_lock);
+            return err;
+        }
+        seek_pos = statbuff.st_size + pos;
+    }
+
+    if(seek_pos < 0){
+        lock_release(entry->entry_lock);
+        return EINVAL;
+    }
+
+    entry->offset = seek_pos;
+    *retval_low = seek_pos >> 32;
+    *retval_high = seek_pos & 0xffffffff;
+    lock_release(entry->entry_lock);
+
+    return 0;
+    
 }
 
 
