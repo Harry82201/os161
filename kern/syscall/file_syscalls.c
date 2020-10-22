@@ -2,12 +2,174 @@
 #include <filetable.h>
 #include <proc.h>
 #include <current.h>
+#include <kern/limits.h>
 #include <limits.h>
+#include <copyinout.h>
 #include <syscall.h>
+#include <vfs.h>
+#include <kern/fcntl.h>
 #include <kern/errno.h>
 #include <uio.h>
-#include <vfs.h>
-#include <copyinout.h>
+#include <vnode.h>
+
+
+int sys_open(const char *filename, int flags, int *retval){
+    
+    char new_path[PATH_MAX];
+    size_t got;
+    int err_copyinstr;
+    int err_vfsopen;
+    struct vnode *new_file;
+    bool entry_created = false;
+
+    // check if file is valid
+    if(filename == NULL){
+        return EFAULT;
+    }
+
+    // check if flag is valid
+    int masked_flags = flags & O_ACCMODE; // mask flags
+    if(masked_flags != O_RDONLY && masked_flags != O_WRONLY && masked_flags != O_RDWR){
+        return EINVAL;
+    }
+
+    // check copyinstr
+    err_copyinstr = copyinstr((const_userptr_t)filename, new_path, PATH_MAX, &got);
+    if(err_copyinstr){
+        return err_copyinstr;
+    }
+
+    // try to open file
+    err_vfsopen = vfs_open(new_path, flags, 0, &new_file);
+    if(err_vfsopen){
+        return err_vfsopen;
+    }
+
+    // scan and find a valid slot to create entry 
+    int fd;
+    for(int i = 0; i < OPEN_MAX; i++){
+        if(curproc->p_filetable->ft_entries[i] == NULL){
+            curproc->p_filetable->ft_entries[i] = entry_create(new_file);
+            fd = i;
+            entry_created = true;
+            break;
+        }
+    }
+    // no valid slot (too many files opened)
+    if(entry_created == false){
+        return EINVAL;
+    }
+    
+    lock_acquire(curproc->p_filetable->ft_entries[fd]->entry_lock);
+    curproc->p_filetable->ft_entries[fd]->file = new_file;
+    curproc->p_filetable->ft_entries[fd]->rwflags = flags;
+    
+    *retval = fd;
+    lock_release(curproc->p_filetable->ft_entries[fd]->entry_lock);
+    
+    return 0;
+
+}
+
+int sys_read(int fd, void *buf, size_t buflen, int *retval){
+    struct uio uio;
+    struct iovec iovec;
+    int result;
+    struct file_table *ft = curproc->p_filetable;
+    
+    lock_acquire(ft->ft_lock);
+    
+    // check if ft and fd are valid
+    if(ft == NULL || fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+
+    // check if flag is valid
+    int masked_flags = ft->ft_entries[fd]->rwflags & O_ACCMODE;
+    if(masked_flags != O_RDONLY && masked_flags != O_RDWR){
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+    
+    // check the buf refers to valid memory
+    if (buf == NULL) {
+        lock_release(ft->ft_lock);
+        return EFAULT;
+    }
+    
+    lock_release(ft->ft_lock);
+
+    lock_acquire(ft->ft_entries[fd]->entry_lock);
+    uio.uio_segflg = UIO_USERSPACE;
+    uio.uio_space = curproc->p_addrspace;
+    uio_kinit(&iovec, &uio, buf, buflen, ft->ft_entries[fd]->offset, UIO_READ);
+
+    result = VOP_READ(ft->ft_entries[fd]->file, &uio);
+    if(result){
+        lock_release(ft->ft_entries[fd]->entry_lock);
+        return result;
+    }
+
+    off_t len = (off_t)buflen - uio.uio_resid;
+    ft->ft_entries[fd]->offset = ft->ft_entries[fd]->offset + len;
+    *retval = len;
+    lock_release(ft->ft_entries[fd]->entry_lock);
+    
+    return 0;
+
+}
+
+int sys_write(int fd, void *buf, size_t nbytes, int *retval){
+    struct uio uio;
+    struct iovec iovec;
+    int result;
+    struct file_table *ft = curproc->p_filetable;
+    
+    KASSERT(ft != NULL);
+
+    lock_acquire(ft->ft_lock);
+    // check if ft and fd are valid
+    if(fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+
+    // check if flag is valid
+    int masked_flags = ft->ft_entries[fd]->rwflags & O_ACCMODE;
+    if(masked_flags != O_WRONLY && masked_flags != O_RDWR){
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+
+    // check the buf refers to valid memory
+    if (buf == NULL) {
+        lock_release(ft->ft_lock);
+        return EFAULT;
+    }
+    
+    lock_release(ft->ft_lock);
+    
+    lock_acquire(ft->ft_entries[fd]->entry_lock);
+    uio_kinit(&iovec, &uio, buf, nbytes, ft->ft_entries[fd]->offset, UIO_WRITE);
+    uio.uio_segflg = UIO_USERSPACE;
+    uio.uio_space = curproc->p_addrspace;
+    
+    result = VOP_WRITE(ft->ft_entries[fd]->file, &uio);
+    if(result){
+        lock_release(ft->ft_entries[fd]->entry_lock);
+        return result;
+    }
+
+    off_t len = (off_t)nbytes - uio.uio_resid;
+    ft->ft_entries[fd]->offset = ft->ft_entries[fd]->offset + len;
+    *retval = len;
+    lock_release(ft->ft_entries[fd]->entry_lock);
+    
+    return 0;
+
+}
+
 
 int sys_close(int fd) 
 {
@@ -17,17 +179,20 @@ int sys_close(int fd)
 
     lock_acquire(ft->ft_lock);
     
-    if (fd < 0 || fd > OPEN_MAX || ft->ft_entries[fd] != NULL) {
+    if (fd < 0 || fd > OPEN_MAX || ft->ft_entries[fd] == NULL) {
         lock_release(ft->ft_lock);
         return EBADF;
     }
     // close entry if being used
     struct file_entry *entry = ft->ft_entries[fd];
     lock_acquire(entry->entry_lock);
-    vfs_close(entry->file);
-    entry_decref(entry);
+    if (entry->ref_count == 1) {
+        entry_decref(entry);
+    } else {
+        entry_decref(entry);
+        lock_release(entry->entry_lock);
+    }
     ft->ft_entries[fd] = NULL;
-    lock_release(entry->entry_lock);
     
     lock_release(ft->ft_lock);
     return 0;
@@ -42,7 +207,7 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     lock_acquire(ft->ft_lock);
     if (newfd < 0 || oldfd < 0 || 
         newfd >= OPEN_MAX || oldfd >= OPEN_MAX ||
-        ft->ft_entries[oldfd] != NULL) {
+        ft->ft_entries[oldfd] == NULL) {
 
         lock_release(ft->ft_lock);
         return EBADF;
@@ -54,14 +219,20 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     struct file_entry *new_entry = ft->ft_entries[newfd];
     if (new_entry != NULL) {
         lock_acquire(new_entry->entry_lock);
-        entry_decref(new_entry);
+        if (new_entry->ref_count == 1) {
+            entry_decref(new_entry);
+        } else {
+            entry_decref(new_entry);
+            lock_release(new_entry->entry_lock);
+        }
+        
         ft->ft_entries[newfd] = NULL;
-        lock_release(new_entry->entry_lock);
     }
 
     // assign new file descriptor to old file_entry and increment ref count
     ft->ft_entries[newfd] = old_entry;
     lock_acquire(old_entry->entry_lock);
+    VOP_INCREF(old_entry->file);
     entry_incref(old_entry);
     lock_release(old_entry->entry_lock);
     

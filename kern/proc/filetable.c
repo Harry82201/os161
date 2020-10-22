@@ -75,6 +75,11 @@ void entry_destroy(struct file_entry *entry)
     KASSERT(entry != NULL);
 
     vfs_close(entry->file);
+    if (entry->file->vn_refcount > 0) {
+        // This is ok because the duplicate will clear the memory
+        entry = NULL;
+        return;
+    }
     lock_destroy(entry->entry_lock);
     kfree(entry);
 }

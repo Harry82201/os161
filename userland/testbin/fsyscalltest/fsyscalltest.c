@@ -39,29 +39,38 @@ simple_test()
 		err(1, "%s: open for write", file);
 	}
 
+	printf("file opened 1\n");
+
 	rv = write(fd, writebuf, 40);
 	if (rv<0) {
 		err(1, "%s: write", file);
 	}
+	printf("file writen 1\n");
 
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (1st time)", file);
 	}
+	printf("file closed 1\n");
 
 	fd = open(file, O_RDONLY);
 	if (fd<0) {
 		err(1, "%s: open for read", file);
 	}
+	printf("file opened 2\n");
 
 	rv = read(fd, readbuf, 40);
 	if (rv<0) {
 		err(1, "%s: read", file);
 	}
+	printf("file read 2\n");
+
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (2nd time)", file);
 	}
+	printf("file closed 2\n");
+
 	/* ensure null termination */
 	readbuf[40] = 0;
 
@@ -191,6 +200,7 @@ test_openfile_limits()
 		 * all that were returned, so we can close them. 
 		 */
 		openFDs[i] = fd;
+		printf("file opened limit test\n");
 	}
 
 	/* This one should fail. */
@@ -201,18 +211,26 @@ test_openfile_limits()
 		    "first three are reserved. \n",
 		    (i+1), OPEN_MAX);
 
+	printf("file opened 1\n");
+
 	/* Let's close one file and open another one, which should succeed. */
 	rv = close(openFDs[0]);
 	if (rv<0)
 		err(1, "%s: close for the 1st time", file);
 	
+	printf("file closed 1\n");
+
 	fd = open(file, O_RDWR|O_CREAT|O_TRUNC, 0664);
 	if (fd<0)
 		err(1, "%s: re-open after closing", file);
 
+	printf("file opened 2\n");
+
 	rv = close(fd);
 	if (rv<0)
 		err(1, "%s: close for the 2nd time", file);
+
+	printf("file closed 2\n");
 
 	/* Begin closing with index "1", because we already closed the one
 	 * at slot "0".
@@ -222,6 +240,8 @@ test_openfile_limits()
 		rv = close(openFDs[i]);
 		if (rv<0)
 			err(1, "%s: close file descriptor %d", file, i);
+		
+		printf("file closed limited\n");
 	}
 }
 

@@ -60,6 +60,10 @@ int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 // file syscalls
+int sys_open(const char *filename, int flags, int *retval);
+int sys_read(int fd, void *buf, size_t buflen, int *retval);
+int sys_write(int fd, void *buf, size_t nbytes, int *retval);
+//int sys_lseek();
 int sys_close(int fd);
 int sys_chdir(const char *pathname);
 int sys_dup2(int oldfd, int newfd, int *retval);
