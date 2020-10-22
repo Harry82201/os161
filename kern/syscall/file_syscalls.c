@@ -195,7 +195,7 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
     lock_acquire(ft->ft_lock);
 
     // check if ft and fd are valid
-    if(fd < 0 || fd > OPEN_MAX - 1){
+    if(fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
         lock_release(ft->ft_lock);
         return EBADF;
     }
@@ -206,11 +206,14 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
 
     if(entry == NULL){
         lock_release(entry->entry_lock);
+        lock_release(ft->ft_lock);
         return EBADF;
     }
 
     // check if seek is illegal
     if(!VOP_ISSEEKABLE(entry->file)){
+        lock_release(entry->entry_lock);
+        lock_release(ft->ft_lock);
         return ESPIPE;
     }
 
@@ -224,6 +227,7 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
     }else if(whence == SEEK_END){
         if(err){
             lock_release(entry->entry_lock);
+            lock_release(ft->ft_lock);
             return err;
         }
         seek_pos = statbuff.st_size + pos;
@@ -232,6 +236,7 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
     // check if seek position is valid
     if(seek_pos < 0){
         lock_release(entry->entry_lock);
+        lock_release(ft->ft_lock);
         return EINVAL;
     }
 
