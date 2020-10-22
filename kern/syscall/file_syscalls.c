@@ -79,11 +79,12 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     struct iovec iovec;
     int result;
     struct file_table *ft = curproc->p_filetable;
+
+    KASSERT(ft != NULL);
     
     lock_acquire(ft->ft_lock);
-    
     // check if ft and fd are valid
-    if(ft == NULL || fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
+    if(fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
         lock_release(ft->ft_lock);
         return EBADF;
     }
@@ -104,10 +105,10 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     lock_release(ft->ft_lock);
 
     lock_acquire(ft->ft_entries[fd]->entry_lock);
-    uio.uio_segflg = UIO_USERSPACE;
-    uio.uio_space = curproc->p_addrspace;
     // create uio struct to get the working directory from virtual file system
     uio_kinit(&iovec, &uio, buf, buflen, ft->ft_entries[fd]->offset, UIO_READ);
+    uio.uio_segflg = UIO_USERSPACE;
+    uio.uio_space = curproc->p_addrspace;
 
     // use VOP_READ to read file
     result = VOP_READ(ft->ft_entries[fd]->file, &uio);
@@ -182,18 +183,30 @@ ssize_t sys_write(int fd, void *buf, size_t nbytes, int *retval){
 off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high){
     
     struct file_table *ft = curproc->p_filetable;
-    struct file_entry *entry = ft->ft_entries[fd];
-    off_t seek_pos = entry->offset;
     struct stat statbuff;
     
-    // check if ft and fd are valid
-    if(ft == NULL || entry == NULL || fd < 0 || fd > OPEN_MAX - 1){
-        return EBADF;
-    }
+    KASSERT(ft != NULL);
 
     // check if whence is invalid
     if(whence < 0 || whence > 2){
         return EINVAL;
+    }
+
+    lock_acquire(ft->ft_lock);
+
+    // check if ft and fd are valid
+    if(fd < 0 || fd > OPEN_MAX - 1){
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+
+    struct file_entry *entry = ft->ft_entries[fd];
+    lock_acquire(entry->entry_lock);
+    off_t seek_pos = entry->offset;
+
+    if(entry == NULL){
+        lock_release(entry->entry_lock);
+        return EBADF;
     }
 
     // check if seek is illegal
@@ -201,8 +214,6 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
         return ESPIPE;
     }
 
-    lock_acquire(entry->entry_lock);
-    // use VOP_STAT to get the file size
     int err = VOP_STAT(entry->file, &statbuff);
 
     // set new position based on whence
@@ -228,7 +239,8 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval_low, int *retval_high
     *retval_low = seek_pos >> 32;
     *retval_high = seek_pos & 0xffffffff;
     lock_release(entry->entry_lock);
-
+    lock_release(ft->ft_lock);
+    
     return 0;
     
 }
