@@ -39,9 +39,23 @@
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
 #include <filetable.h>
+#include <limits.h>
 
 struct addrspace;
 struct vnode;
+
+/*
+* Table index status for pidtable
+*/
+#define READY 0     /* Index available for process */
+#define RUNNING 1   /* Process running */
+#define ZOMBIE 2    /* Process waiting to be reaped */
+#define ORPHAN 3    /* Process running and parent exited */
+
+/*
+ * The PID table accessible by all processes used for get and wait pid
+ */  
+extern struct pid_table *pid_table;
 
 /*
  * Process structure.
@@ -50,6 +64,10 @@ struct proc {
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	struct threadarray p_threads;	/* Threads in this process */
+
+    /* PID */
+    pid_t pid;
+    struct array *children;
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -60,6 +78,19 @@ struct proc {
 	/* add more material here as needed */
     struct file_table *p_filetable; /* open file table */
 };
+
+struct pid_table {
+    struct lock *pt_lock;
+    struct cv *pt_cv; // for pid wait
+    struct proc *pt_process[PID_MAX+1];
+    int pt_status[PID_MAX+1];
+    int pt_waitcode[PID_MAX+1];
+    int pt_available;
+    int pt_next; 
+};
+
+void pid_table_bootstrap(void);
+
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;

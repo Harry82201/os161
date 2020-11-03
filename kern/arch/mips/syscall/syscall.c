@@ -36,6 +36,7 @@
 #include <current.h>
 #include <syscall.h>
 #include <copyinout.h>
+#include <kern/wait.h>
 
 
 /*
@@ -113,7 +114,7 @@ syscall(struct trapframe *tf)
 				 (userptr_t)tf->tf_a1);
 		break;
 
-	    /* Add stuff here */
+	    /* File Syscalls*/
 		case SYS_open:
 		err = sys_open((const char*)tf->tf_a0, tf->tf_a1, &retval);
 		break;
@@ -147,6 +148,29 @@ syscall(struct trapframe *tf)
         case SYS___getcwd:
         err = sys___getcwd((char *)tf->tf_a0, 
                 (size_t) tf->tf_a1, &retval); 
+        break;
+
+        /* Process Syscalls */
+        case SYS_getpid:
+        err = sys_getpid(&retval);
+        break;
+
+        case SYS_fork:
+        err = sys_fork(tf, &retval);
+        break;
+
+        case SYS_execv:
+        err = sys_execv((const char *) tf->tf_a0, (char **) tf->tf_a1);
+        break;
+
+        case SYS_waitpid:
+        err = sys_waitpid((pid_t)tf->tf_a0, (int32_t *) tf->tf_a1, (int32_t) tf->tf_a2);
+        break;
+
+        case SYS__exit: ;
+        int waitcode = (int) _MKWAIT_EXIT(tf->tf_a0);
+        sys__exit(waitcode);
+        panic("Exit syscall should never return");
         break;
 
 	    default:

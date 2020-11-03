@@ -69,4 +69,11 @@ int sys_chdir(const char *pathname);
 int sys_dup2(int oldfd, int newfd, int *retval);
 int sys___getcwd(char *buf, size_t buflen, int *retval);
 
+// process syscalls
+int sys_getpid(int *retval);
+int sys_fork(struct trapframe *tf, int *retval);
+int sys_execv(const char *program, char **args);
+int sys_waitpid(pid_t pid, int *status, int options);
+void sys__exit(int waitcode); 
+
 #endif /* _SYSCALL_H_ */

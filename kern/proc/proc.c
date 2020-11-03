@@ -48,11 +48,14 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <limits.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+
+struct pid_table *pid_table;
 
 /*
  * Create a proc structure.
@@ -87,6 +90,8 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
+
+    proc->pid = 1;
 
 	return proc;
 }
@@ -343,3 +348,38 @@ proc_setas(struct addrspace *newas)
 	spinlock_release(&proc->p_lock);
 	return oldas;
 }
+
+void pid_table_bootstrap()
+{
+    // We panic in this function because we need this to run correctly 
+    // or else process syscalls will not work
+    pid_table = kmalloc(sizeof(struct pid_table));
+    if (pid_table == NULL) {
+        panic("Unable to initialize PID table. \n");
+    }
+
+    pid_table->pt_lock = lock_create("pid table lock");
+    if (pid_table->pt_lock == NULL) {
+        panic("Unable to initialize PID table lock. \n");
+    }
+
+    pid_table->pt_cv = cv_create("pid table cv");
+    if (pid_table->pt_cv == NULL) {
+        panic("Unable to initialize PID table cv. \n");
+    }
+
+    pid_table->pt_available = 1; // for kernel process
+    pid_table->pt_next = PID_MIN;
+    // add kernel process
+    pid_table->pt_process[kproc->pid] = kproc;
+    pid_table->pt_status[kproc->pid] = RUNNING;
+
+    for (int i = PID_MIN; i < PID_MAX; i++) {
+        pid_table->pt_available++;
+        pid_table->pt_process[i] = NULL;
+        pid_table->pt_status[i] = READY;
+        pid_table->pt_waitcode[i] = 0;
+    }
+}
+
+
