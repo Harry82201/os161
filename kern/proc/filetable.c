@@ -35,9 +35,25 @@ struct file_table *ft_create()
 void ft_destroy(struct file_table *ft) 
 {
     KASSERT(ft != NULL);
-
-    lock_destroy(ft->ft_lock);
-    kfree(ft);
+    bool free = true;
+    for (int i = 0; i < OPEN_MAX; i++) {
+        
+        if (ft->ft_entries[i] != NULL) {
+            
+            lock_acquire(ft->ft_entries[i]->entry_lock);
+            if (ft->ft_entries[i]->ref_count == 1) {
+                entry_decref(ft->ft_entries[i]);
+            } else {
+                free = false;
+                entry_decref(ft->ft_entries[i]);
+                lock_release(ft->ft_entries[i]->entry_lock);
+            } 
+        }   
+    }
+    if (free) {
+        lock_destroy(ft->ft_lock);
+        kfree(ft);
+    }
 }
 
 /*

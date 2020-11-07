@@ -47,10 +47,7 @@ struct vnode;
 /*
 * Table index status for pidtable
 */
-#define READY 0     /* Index available for process */
-#define RUNNING 1   /* Process running */
-#define ZOMBIE 2    /* Process waiting to be reaped */
-#define ORPHAN 3    /* Process running and parent exited */
+enum ProcessStatus {READY, RUNNING, ZOMBIE, ORPHAN};
 
 /*
  * The PID table accessible by all processes used for get and wait pid
@@ -67,7 +64,7 @@ struct proc {
 
     /* PID */
     pid_t pid;
-    struct array *children;
+    struct array *p_children;
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -90,6 +87,8 @@ struct pid_table {
 };
 
 void pid_table_bootstrap(void);
+int pid_table_add_proc(struct proc* proc, pid_t* pid);
+void pid_table_clear_pid(pid_t pid);
 
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -97,6 +96,9 @@ extern struct proc *kproc;
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
+
+/* Create a fresh process */
+struct proc *proc_create(const char *name);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);

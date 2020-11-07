@@ -49,6 +49,7 @@
 #include <addrspace.h>
 #include <vnode.h>
 #include <limits.h>
+#include <kern/errno.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -60,7 +61,6 @@ struct pid_table *pid_table;
 /*
  * Create a proc structure.
  */
-static
 struct proc *
 proc_create(const char *name)
 {
@@ -77,6 +77,14 @@ proc_create(const char *name)
 	}
     proc->p_filetable = ft_create();
     if (proc->p_filetable == NULL) {
+        kfree(proc->p_name);
+        kfree(proc);
+        return NULL;
+    }
+
+    proc->p_children = array_create();
+    if (proc->p_children == NULL) {
+        kfree(proc->p_filetable);
         kfree(proc->p_name);
         kfree(proc);
         return NULL;
@@ -127,6 +135,11 @@ proc_destroy(struct proc *proc)
 		VOP_DECREF(proc->p_cwd);
 		proc->p_cwd = NULL;
 	}
+    /* PID fields */
+    int children_size = array_num(proc->p_children);
+    for (int i = 0; i < children_size; i++) {
+        array_remove(proc->p_children, 0);
+    }
 
 	/* VM fields */
 	if (proc->p_addrspace) {
@@ -178,8 +191,14 @@ proc_destroy(struct proc *proc)
 
     ft_destroy(proc->p_filetable);
 
+    int threadarray_size = threadarray_num(&proc->p_threads);
+    for (int i = 0; i < threadarray_size; i++) {
+        threadarray_remove(&proc->p_threads, 0);
+    }
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
+
+    array_destroy(proc->p_children);
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -375,11 +394,50 @@ void pid_table_bootstrap()
     pid_table->pt_status[kproc->pid] = RUNNING;
 
     for (int i = PID_MIN; i < PID_MAX; i++) {
-        pid_table->pt_available++;
-        pid_table->pt_process[i] = NULL;
-        pid_table->pt_status[i] = READY;
-        pid_table->pt_waitcode[i] = 0;
+        pid_table_clear_pid(i);
     }
 }
 
+int pid_table_add_proc(struct proc* proc, pid_t *pid)
+{
+    lock_acquire(pid_table->pt_lock);
+    // check that pids are available
+    if (pid_table->pt_available == 0) {
+        lock_release(pid_table->pt_lock);
+        return EMPROC;
+    }
+    // add new proc to calling process as a child
+    array_add(curproc->p_children, proc, NULL);
+    // add proc to pid table
+    *pid = pid_table->pt_next;
+    pid_table->pt_process[*pid] = proc;
+    pid_table->pt_status[*pid] = RUNNING;
+    pid_table->pt_waitcode[*pid] = 0;
+    pid_table->pt_available--;
+    
+    // get the next pid
+    if (pid_table->pt_available > 0) {
+        for (int i = *pid; i < PID_MAX; i++) {
+            if (pid_table->pt_status[i] == READY) {
+                pid_table->pt_next = i;
+                break;
+            }
+        }
+    // no pids available so table is set to out of bounds
+    } else {
+        pid_table->pt_next = PID_MAX + 1;
+    }
+    lock_release(pid_table->pt_lock);
 
+    return 0;
+}
+
+void pid_table_clear_pid(pid_t pid) 
+{
+    KASSERT(pid >= PID_MIN && pid <= PID_MAX);
+
+    pid_table->pt_available++;
+    pid_table->pt_process[pid] = NULL;
+    pid_table->pt_status[pid] = READY;
+    pid_table->pt_waitcode[pid] = 0;
+}
