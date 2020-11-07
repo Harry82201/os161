@@ -141,21 +141,21 @@ V(struct semaphore *sem)
 struct lock *
 lock_create(const char *name)
 {
-        struct lock *lock;
+    struct lock *lock;
 
-        lock = kmalloc(sizeof(struct lock));
-        if (lock == NULL) {
-                return NULL;
-        }
+    lock = kmalloc(sizeof(struct lock));
+    if (lock == NULL) {
+            return NULL;
+    }
 
-        lock->lk_name = kstrdup(name);
-        if (lock->lk_name == NULL) {
-                kfree(lock);
-                return NULL;
-        }
+    lock->lk_name = kstrdup(name);
+    if (lock->lk_name == NULL) {
+            kfree(lock);
+            return NULL;
+    }
 
-        // add stuff here as needed
-        lock->lk_wchan = wchan_create(lock->lk_name);
+    // add stuff here as needed
+    lock->lk_wchan = wchan_create(lock->lk_name);
 	if (lock->lk_wchan == NULL) {
 		kfree(lock->lk_name);
 		kfree(lock);
@@ -184,15 +184,15 @@ lock_destroy(struct lock *lock)
 void
 lock_acquire(struct lock *lock)
 {
-        // Write this
-        DEBUGASSERT(lock != NULL);
-        KASSERT(curthread->t_in_interrupt == false);
+    // Write this
+    DEBUGASSERT(lock != NULL);
+    KASSERT(curthread->t_in_interrupt == false);
 
 	spinlock_acquire(&lock->lk_lock);
 	KASSERT(lock->lk_holder != curthread);
 	while (lock->lk_holder != NULL) {
 		/* As in the semaphore. */
-                wchan_sleep(lock->lk_wchan, &lock->lk_lock);
+        wchan_sleep(lock->lk_wchan, &lock->lk_lock);
 	}
 
 	lock->lk_holder = curthread;
@@ -202,9 +202,9 @@ lock_acquire(struct lock *lock)
 void
 lock_release(struct lock *lock)
 {
-        // Write this
-        DEBUGASSERT(lock != NULL);
-
+    // Write this
+    DEBUGASSERT(lock != NULL);
+    KASSERT(lock_do_i_hold(lock));
 	spinlock_acquire(&lock->lk_lock);
 	KASSERT(lock->lk_holder == curthread);
 	lock->lk_holder = NULL;
@@ -215,8 +215,8 @@ lock_release(struct lock *lock)
 bool
 lock_do_i_hold(struct lock *lock)
 {
-        // Write this
-        bool ret;
+    // Write this
+    bool ret;
 
 	DEBUGASSERT(lock != NULL);
 
@@ -224,7 +224,7 @@ lock_do_i_hold(struct lock *lock)
 	ret = (lock->lk_holder == curthread);
 	spinlock_release(&lock->lk_lock);
 
-        return ret;
+    return ret;
 }
 
 ////////////////////////////////////////////////////////////

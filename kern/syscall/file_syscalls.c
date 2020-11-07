@@ -24,34 +24,38 @@ int sys_open(const char *filename, int flags, int *retval){
     struct vnode *new_file;
     bool entry_created = false;
 
+    struct file_table *ft = curproc->p_filetable;
+
     // check if file is valid
     if(filename == NULL){
         return EFAULT;
     }
-
+    
     // check if flag is valid
     int masked_flags = flags & O_ACCMODE; // mask flags
     if(masked_flags != O_RDONLY && masked_flags != O_WRONLY && masked_flags != O_RDWR){
         return EINVAL;
     }
-
+    lock_acquire(ft->ft_lock);
     // copy string from user space to kernel space
     err_copyinstr = copyinstr((const_userptr_t)filename, new_path, PATH_MAX, &got);
     if(err_copyinstr){
+        lock_release(ft->ft_lock);
         return err_copyinstr;
     }
 
     // try to open file
     err_vfsopen = vfs_open(new_path, flags, 0, &new_file);
     if(err_vfsopen){
+        lock_release(ft->ft_lock);
         return err_vfsopen;
     }
-
+    
     // scan and find a valid slot to create entry 
     int fd;
     for(int i = 0; i < OPEN_MAX; i++){
-        if(curproc->p_filetable->ft_entries[i] == NULL){
-            curproc->p_filetable->ft_entries[i] = entry_create(new_file);
+        if(ft->ft_entries[i] == NULL){
+            ft->ft_entries[i] = entry_create(new_file);
             fd = i;
             entry_created = true;
             break;
@@ -59,17 +63,18 @@ int sys_open(const char *filename, int flags, int *retval){
     }
     // no valid slot (too many files opened)
     if(entry_created == false){
+        lock_release(ft->ft_lock);
         return EINVAL;
     }
     
-    lock_acquire(curproc->p_filetable->ft_entries[fd]->entry_lock);
+    lock_acquire(ft->ft_entries[fd]->entry_lock);
     // set current entry's filepath and flag
-    curproc->p_filetable->ft_entries[fd]->file = new_file;
-    curproc->p_filetable->ft_entries[fd]->rwflags = flags;
+    ft->ft_entries[fd]->file = new_file;
+    ft->ft_entries[fd]->rwflags = flags;
     
     *retval = fd;
-    lock_release(curproc->p_filetable->ft_entries[fd]->entry_lock);
-    
+    lock_release(ft->ft_entries[fd]->entry_lock);
+    lock_release(ft->ft_lock);
     return 0;
 
 }
@@ -81,29 +86,18 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     struct file_table *ft = curproc->p_filetable;
 
     KASSERT(ft != NULL);
-    
-    lock_acquire(ft->ft_lock);
+
     // check if ft and fd are valid
     if(fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
-        lock_release(ft->ft_lock);
         return EBADF;
     }
 
     // check if flag is valid
     int masked_flags = ft->ft_entries[fd]->rwflags & O_ACCMODE;
     if(masked_flags != O_RDONLY && masked_flags != O_RDWR){
-        lock_release(ft->ft_lock);
         return EBADF;
     }
     
-    // check the buf refers to valid memory
-    if (buf == NULL) {
-        lock_release(ft->ft_lock);
-        return EFAULT;
-    }
-    
-    lock_release(ft->ft_lock);
-
     lock_acquire(ft->ft_entries[fd]->entry_lock);
     // create uio struct to get the working directory from virtual file system
     uio_kinit(&iovec, &uio, buf, buflen, ft->ft_entries[fd]->offset, UIO_READ);
@@ -123,6 +117,7 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     *retval = len;
     lock_release(ft->ft_entries[fd]->entry_lock);
     
+    
     return 0;
 
 }
@@ -135,29 +130,19 @@ ssize_t sys_write(int fd, void *buf, size_t nbytes, int *retval){
     
     KASSERT(ft != NULL);
 
-    lock_acquire(ft->ft_lock);
     // check if ft and fd are valid
     if(fd < 0 || fd > OPEN_MAX - 1 || ft->ft_entries[fd] == NULL){
-        lock_release(ft->ft_lock);
         return EBADF;
     }
 
     // check if flag is valid
     int masked_flags = ft->ft_entries[fd]->rwflags & O_ACCMODE;
     if(masked_flags != O_WRONLY && masked_flags != O_RDWR){
-        lock_release(ft->ft_lock);
         return EBADF;
     }
 
-    // check the buf refers to valid memory
-    if (buf == NULL) {
-        lock_release(ft->ft_lock);
-        return EFAULT;
-    }
-    
-    lock_release(ft->ft_lock);
-    
     lock_acquire(ft->ft_entries[fd]->entry_lock);
+    
     // create uio struct to get the working directory from virtual file system
     uio_kinit(&iovec, &uio, buf, nbytes, ft->ft_entries[fd]->offset, UIO_WRITE);
     uio.uio_segflg = UIO_USERSPACE;
@@ -285,6 +270,7 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     KASSERT(ft != NULL);
 
     lock_acquire(ft->ft_lock);
+
     if (newfd < 0 || oldfd < 0 || 
         newfd >= OPEN_MAX || oldfd >= OPEN_MAX ||
         ft->ft_entries[oldfd] == NULL) {

@@ -1,0 +1,3 @@
+userland/**
+build/
+kern/compile/DUMBVM/

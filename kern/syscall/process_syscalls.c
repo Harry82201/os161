@@ -65,7 +65,7 @@ int sys_fork(struct trapframe *tf, int *retval)
     // copy file_table 
 
     struct file_table* ft = curproc->p_filetable;
-    lock_acquire(curproc->p_filetable->ft_lock);
+    lock_acquire(ft->ft_lock);
     // ref_count to entries are incremented
     for (int i = 0; i < OPEN_MAX; i++) {
         if(ft->ft_entries[i] != NULL) {
@@ -74,9 +74,9 @@ int sys_fork(struct trapframe *tf, int *retval)
             lock_release(ft->ft_entries[i]->entry_lock);
         }
     }
-
-    lock_release(curproc->p_filetable->ft_lock);
-    new_proc->p_filetable = curproc->p_filetable;
+    new_proc->p_filetable = ft;
+    lock_release(ft->ft_lock);
+    
 
     struct trapframe* fork_tf = kmalloc(sizeof(struct trapframe));
     memcpy(fork_tf, tf, sizeof(struct trapframe));
