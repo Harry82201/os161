@@ -9,13 +9,11 @@
 #include <kern/errno.h>
 #include <mips/trapframe.h>
 #include <copyinout.h>
-
 #include <kern/fcntl.h>
 #include <lib.h>
 #include <vm.h>
 #include <vfs.h>
 #include <test.h>
-#include <kern/errno.h>
 
 
 int sys_getpid(int *retval)
