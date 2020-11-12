@@ -256,6 +256,12 @@ proc_create_runprogram(const char *name)
 	}
 	spinlock_release(&curproc->p_lock);
 
+    err = pid_table_add_proc(newproc, &newproc->pid);
+    if (err) {
+        proc_destroy(newproc);
+        return NULL;
+    }
+
 	return newproc;
 }
 

@@ -100,7 +100,7 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
     
     lock_acquire(ft->ft_entries[fd]->entry_lock);
     // create uio struct to get the working directory from virtual file system
-    uio_kinit(&iovec, &uio, buf, buflen, ft->ft_entries[fd]->offset, UIO_READ);
+    uio_kinit(&iovec, &uio, (userptr_t)buf, buflen, ft->ft_entries[fd]->offset, UIO_READ);
     uio.uio_segflg = UIO_USERSPACE;
     uio.uio_space = curproc->p_addrspace;
 
@@ -113,11 +113,9 @@ ssize_t sys_read(int fd, void *buf, size_t buflen, int *retval){
 
     // retval is the amount of data transfered
     off_t len = (off_t)buflen - uio.uio_resid;
-    ft->ft_entries[fd]->offset = ft->ft_entries[fd]->offset + len;
+    ft->ft_entries[fd]->offset += len;
     *retval = len;
     lock_release(ft->ft_entries[fd]->entry_lock);
-    
-    
     return 0;
 
 }
@@ -157,10 +155,9 @@ ssize_t sys_write(int fd, void *buf, size_t nbytes, int *retval){
 
     // retval is the amount of data transfered
     off_t len = (off_t)nbytes - uio.uio_resid;
-    ft->ft_entries[fd]->offset = ft->ft_entries[fd]->offset + len;
+    ft->ft_entries[fd]->offset += len;
     *retval = len;
     lock_release(ft->ft_entries[fd]->entry_lock);
-    
     return 0;
 
 }
