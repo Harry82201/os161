@@ -10,6 +10,14 @@
 #include <mips/trapframe.h>
 #include <copyinout.h>
 
+#include <kern/fcntl.h>
+#include <lib.h>
+#include <vm.h>
+#include <vfs.h>
+#include <test.h>
+#include <kern/errno.h>
+
+
 int sys_getpid(int *retval)
 {
     lock_acquire(pid_table->pt_lock);
@@ -101,10 +109,135 @@ int sys_fork(struct trapframe *tf, int *retval)
 
 int sys_execv(const char *program, char **args)
 {
-    (void) program;
-    (void) args;
+    if(program == NULL || args == NULL){
+        return EFAULT;
+    }
 
-    return 0;
+    struct addrspace *as, *oldas;
+    struct vnode *v;
+	vaddr_t entrypoint, stackptr;
+	int result;
+
+    char *progname;
+	size_t *got;
+    
+    progname = kmalloc(PATH_MAX * sizeof(char));
+    got = kmalloc(sizeof(int));
+    copyinstr((const_userptr_t) program, progname, PATH_MAX, got);
+
+    //loop through args to find out arg count
+    int argc = -1;
+    for(int i = 0; i < ARG_MAX; i++){
+        if(args[i] == NULL){
+            argc = i;
+            break;
+        }
+    }
+    if(argc == -1) return EFAULT;
+
+
+    void **kargs = kmalloc(argc * sizeof(char*));
+    int *arg_size = kmalloc(argc * sizeof(int));
+    
+    //loop through args to find out current argument size
+    int cur_arg_size;
+	for (int i = 0; i < argc; i++) {
+        cur_arg_size = -1;
+        for(int j = 0; j < ARG_MAX; j++){
+            if(args[i][j] == 0){
+                //argument size plus "\0"
+                cur_arg_size = j + 1;
+                break;
+            }
+        }
+        //argument too big
+        if(cur_arg_size == -1) return E2BIG;
+
+        //copy current argument into kargs
+		kargs[i] = kmalloc(cur_arg_size * sizeof(char));
+		copyin((const_userptr_t) args[i], (void*) kargs[i], (size_t) cur_arg_size);
+        //store current argument size into arg_size array
+        arg_size[i] = cur_arg_size;
+	}
+
+    // runprogram
+
+	//Open the file.
+	result = vfs_open(progname, O_RDONLY, 0, &v);
+	if (result) {
+		return result;
+	}
+
+	//We should be a new process/
+	//KASSERT(proc_getas() == NULL);
+	
+    
+    // Create a new address space.
+	as = as_create();
+	if (as == NULL) {
+		vfs_close(v);
+		return ENOMEM;
+	}
+
+    // Switch to it and activate it. 
+	oldas = proc_setas(as);
+	as_activate();	
+	// Load the executable. 
+	result = load_elf(v, &entrypoint);
+	if (result) {
+		// p_addrspace will go away when curproc is destroyed 
+		vfs_close(v);
+        proc_setas(oldas);
+		return result;
+	}
+	// Done with the file now. 
+	vfs_close(v);
+	// Define the user stack in the address space 
+	result = as_define_stack(as, &stackptr);
+	if (result) {
+		// p_addrspace will go away when curproc is destroyed 
+        proc_setas(oldas);
+		return result;
+    }
+
+    userptr_t uargs = (userptr_t) (stackptr - (argc + 1) * sizeof(userptr_t*));
+	userptr_t uarg_start = uargs;
+	userptr_t *temp_addr = (userptr_t*) uarg_start;
+    
+    //create enough space for uargs
+	for(int i = 0; i < argc; i++){
+        uarg_start = uarg_start - arg_size[i];
+    }
+
+    //uarg_start now at the top of stack
+    stackptr = (vaddr_t) uarg_start;
+
+    int ret;
+    for (int i = 0; i < argc; i++) {
+        //copy the address of current arugument
+        *temp_addr = uarg_start;
+        //copyout the argument from kernel
+		ret = copyout((const void *) kargs[i], uarg_start, (size_t) arg_size[i]);
+        if(ret){
+            proc_setas(oldas);
+        }
+        uarg_start = uarg_start + arg_size[i];
+		temp_addr++;
+        kfree(kargs[i]);
+	}
+
+    //set null-terminated 
+    *temp_addr = NULL;
+
+    as_destroy(oldas);
+    enter_new_process(argc, uargs, NULL, // userspace addr of environment
+			  stackptr, entrypoint);
+
+	// enter_new_process does not return. 
+	panic("enter_new_process returned\n");
+	return EINVAL;
+
+    //return 0;
 }
 
 int sys_waitpid(pid_t pid, int *status, int options)
