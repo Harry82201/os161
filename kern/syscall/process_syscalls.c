@@ -120,6 +120,10 @@ int sys_execv(const char *program, char **args)
         return EFAULT;
     }
 
+    if ((int) program >= 0x40000000) {
+		return EFAULT;
+	}
+
     struct addrspace *as, *oldas;
     struct vnode *v;
 	vaddr_t entrypoint, stackptr;
