@@ -116,14 +116,6 @@ int sys_fork(struct trapframe *tf, int *retval)
 
 int sys_execv(const char *program, char **args)
 {
-    if(program == NULL || args == NULL){
-        return EFAULT;
-    }
-
-    if ((int) program >= 0x40000000) {
-		return EFAULT;
-	}
-
     struct addrspace *as, *oldas;
     struct vnode *v;
 	vaddr_t entrypoint, stackptr;
@@ -132,13 +124,33 @@ int sys_execv(const char *program, char **args)
     char *progname;
 	size_t *got;
     
+    if(program == NULL || args == NULL ){
+        return EFAULT;
+    }
+
     progname = kmalloc(PATH_MAX * sizeof(char));
     got = kmalloc(sizeof(int));
-    copyinstr((const_userptr_t) program, progname, PATH_MAX, got);
+    result = copyinstr((const_userptr_t) program, progname, PATH_MAX, got);
+    if (result) {
+        return result;
+    }
 
+    if (program[0] == '\0') {
+        return EINVAL;
+    }
+
+    if ((unsigned) args == 0x40000000 || (unsigned) args >= 0x80000000 ) {
+		return EFAULT;
+	}
+
+    
+    
     //loop through args to find out arg count
     int argc = -1;
     for(int i = 0; i < ARG_MAX; i++){
+        if((unsigned) args[i] == 0x40000000 || (unsigned) args[i] >= 0x80000000 ) {
+            return EFAULT;
+        }
         if(args[i] == NULL){
             argc = i;
             break;
@@ -166,7 +178,10 @@ int sys_execv(const char *program, char **args)
 
         //copy current argument into kargs
 		kargs[i] = kmalloc(cur_arg_size * sizeof(char));
-		copyin((const_userptr_t) args[i], (void*) kargs[i], (size_t) cur_arg_size);
+		result = copyin((const_userptr_t) args[i], (void*) kargs[i], (size_t) cur_arg_size);
+        if (result) {
+            return result;
+        }
         //store current argument size into arg_size array
         arg_size[i] = cur_arg_size;
 	}
@@ -178,10 +193,6 @@ int sys_execv(const char *program, char **args)
 	if (result) {
 		return result;
 	}
-
-	//We should be a new process/
-	//KASSERT(proc_getas() == NULL);
-	
     
     // Create a new address space.
 	as = as_create();
@@ -247,8 +258,6 @@ int sys_execv(const char *program, char **args)
 	// enter_new_process does not return. 
 	panic("enter_new_process returned\n");
 	return EINVAL;
-
-    //return 0;
 }
 
 int sys_waitpid(pid_t pid, int *status, int options)
