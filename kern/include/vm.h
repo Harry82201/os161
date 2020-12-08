@@ -38,12 +38,26 @@
 
 
 #include <machine/vm.h>
+#include <spinlock.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
+#define COREMAP_PAGES        8
+#define NUM_PPAGES           COREMAP_PAGES * PAGE_SIZE / 8
+
+#define PP_USED              0x80000000
+#define KMALLOC_END          0x40000000
+#define DIRTY                0x20000000
+
+
+struct coremap {
+    cm_entry_t cm_entries[NUM_PPAGES];
+    struct spinlock cm_spinlock;
+    volatile size_t cm_counter;
+};
 
 /* Initialization function */
 void vm_bootstrap(void);

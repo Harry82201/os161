@@ -66,6 +66,11 @@
  * a valid address, and will make a *huge* mess if you scribble on it.
  */
 #define PADDR_TO_KVADDR(paddr) ((paddr)+MIPS_KSEG0)
+#define KVADDR_TO_PADDR(paddr) ((paddr)-MIPS_KSEG0)
+#define PAGE_TO_ADDR(page) 	   ((page) << 12)
+#define ADDR_TO_PAGE(addr) 	   ((addr) >> 12)
+#define PPAGE_TO_KVPAGE(ppage) ((ppage)+0x00080000)
+#define KVPAGE_TO_PPAGE(ppage) ((ppage)-0x00080000)
 
 /*
  * The top of user space. (Actually, the address immediately above the
@@ -117,10 +122,8 @@ paddr_t ram_getfirstfree(void);
  */
 
 struct tlbshootdown {
-	/*
-	 * Change this to what you need for your VM design.
-	 */
-	int ts_placeholder;
+	vaddr_t v_page_num;
+	pid_t pid;
 };
 
 #define TLBSHOOTDOWN_MAX 16
